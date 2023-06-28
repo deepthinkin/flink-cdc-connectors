@@ -1,0 +1,89 @@
+新Source架构
+主要包括2个组件
+SplitEnumerator: 发现和指派split（split可以为文件，分区等）
+Reader:  负责从split中读取真实数据
+
+实现主要包括以下几个类
+Source
+SourceReader
+SplitEnumerator
+SourceCoordinator   org.apache.flink.runtime.source.coordinator.SourceCoordinator
+1)Source
+包含创建SourceReader，SplitEnumerator和对应Serializers的工厂方法
+// 数据源是否有界
+// 返回值为Boundedness.BOUNDED 或者 Boundedness.CONTINUOUS_UNBOUNDED
+Boundedness getBoundedness();
+
+// 创建一个reader，读取它分配的split。这个Reader是全新的，不需要从状态恢复
+SourceReader<T, SplitT> createReader(SourceReaderContext readerContext) throws Exception;
+
+ // 创建SplitEnumerator，开启一个新的输入
+SplitEnumerator<SplitT, EnumChkT> createEnumerator(SplitEnumeratorContext<SplitT> enumContext)
+        throws Exception;
+
+// 从Checkpoint恢复一个SplitEnumerator
+    SplitEnumerator<SplitT, EnumChkT> restoreEnumerator(
+            SplitEnumeratorContext<SplitT> enumContext, EnumChkT checkpoint) throws Exception;
+
+// 创建source split的serializer。当split从enumerator发送到reader和reader checkpoint的时候，split会被序列化
+    SimpleVersionedSerializer<SplitT> getSplitSerializer();
+
+// 获取SplitEnumerator checkpoint的serializer，用于处理SplitEnumerator#snapshotState()方法返回的结果
+    SimpleVersionedSerializer<EnumChkT> getEnumeratorCheckpointSerializer();
+
+2) SourceReader
+负责读取SplitEnumerator分配的source split
+//1、 启动reader
+void start();
+
+//2、拉取下一个可读取的记录到SourceOutput
+// 务必确保这个方法是非阻塞的
+// 最好一次调用只输出一条数据
+InputStatus pollNext(ReaderOutput<T> output) throws Exception;
+
+//3、创建source的checkpoint
+List<SplitT> snapshotState(long checkpointId);
+
+//4、 创建一个future，表明reader中是否有数据可被读取
+// 一旦这个future进入completed状态，Flink一直调用pollNext(ReaderOutput)方法指导这个方法返回除InputStatus#MORE_AVAILABLE之外的内容
+// 在这之后，会再次调isAvailable方法获取下一个future。如果它completed，再次调用pollNext(ReaderOutput)。以此类推
+CompletableFuture<Void> isAvailable();
+
+//5、添加一系列splits，以供reader读取。这个方法在SplitEnumeratorContext#assignSplit(SourceSplit, int)或者SplitEnumeratorContext#assignSplits(SplitsAssignment)中调用
+void addSplits(List<SplitT> splits);
+
+//6、 如果reader不会接收到更多的split，这个方法会被调用，从而通知reader
+void notifyNoMoreSplits();
+
+//7、 处理SplitEnumerator发出的SourceEvent。
+// SplitEnumeratorContext#sendEventToSourceReader(int, SourceEvent)发送event的时候调用
+default void handleSourceEvents(SourceEvent sourceEvent) {}
+
+//8、 checkpoint完成的时候通知
+// 绝大多数reader不需要实现这个方法
+@Override
+default void notifyCheckpointComplete(long checkpointId) throws Exception {}
+
+
+3) SplitEnumerator
+发现机制。实时发现可供SourceReader读取的split。
+为SourceReader分配split。
+
+
+
+4) SourceCoordinator
+使用event loop线程模型和Flink runtime交互，确保所有的状态操作在event loop线程（单线程池）中。它还记录split分配的历史，
+从而简化SplitEnumerator的实现。
+启动方法start，创建出enumerator并且调用enumerator的start方法
+
+
+
+flinkcdc 中的mysql-cdc 作为源，同样也得按照此规则自定义来实现。'
+
+SourceCoordinator 触发执行
+
+MySqlSource
+MySqlSourceEnumerator
+MySqlSourceReader
+
+addReader

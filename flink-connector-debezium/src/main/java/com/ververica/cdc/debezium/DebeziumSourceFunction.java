@@ -77,6 +77,14 @@ import static com.ververica.cdc.debezium.utils.DatabaseHistoryUtil.registerHisto
 import static com.ververica.cdc.debezium.utils.DatabaseHistoryUtil.retrieveHistory;
 
 /**
+ * 自定义debezium source
+ * 继承 RichSourceFunction
+ * 重写 open run cancel 方法即可。
+ */
+
+
+
+/**
  * The {@link DebeziumSourceFunction} is a streaming data source that pulls captured change data
  * from databases into Flink.
  *
@@ -213,11 +221,13 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
 
     @Override
     public void open(Configuration parameters) throws Exception {
+        //入口
         validator.validate();
         super.open(parameters);
         ThreadFactory threadFactory =
                 new ThreadFactoryBuilder().setNameFormat("debezium-engine").build();
         this.executor = Executors.newSingleThreadExecutor(threadFactory);
+        //移交器，负责从debezium 获取数据并移交给下游
         this.handover = new Handover();
         this.changeConsumer = new DebeziumChangeConsumer(handover);
     }
