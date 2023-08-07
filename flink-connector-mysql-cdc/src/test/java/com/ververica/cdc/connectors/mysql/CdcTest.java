@@ -19,7 +19,8 @@ public class CdcTest {
                         .password("root")
                         .serverId("5401-5404")
                         .deserializer(new JsonDebeziumDeserializationSchema())
-                        .includeSchemaChanges(true) // output the schema changes as well
+                        .includeSchemaChanges(true).splitSize()
+                        // output the schema changes as well
                         .build();
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
